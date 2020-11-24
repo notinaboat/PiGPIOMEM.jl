@@ -4,4 +4,5 @@ authors = ["notinaboat <notinaboat@icloud.com>"]
 version = "0.1.0"
 
 [deps]
+LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
