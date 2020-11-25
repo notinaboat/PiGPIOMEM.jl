@@ -68,10 +68,10 @@ const gpiomem_length = 40                                        # [1, 6.1, p91]
 """
     Register(offset)
 
-Wraps a pointer one of the BCM2835 GPIO registers.
+Wraps a pointer to one of the BCM2835 GPIO registers.
 Provides efficient access to register content using direct load/store
 instructions via the `getindex/setindex!` interface.
-The offset is checked once at construction time to ensure it is in bounds.
+The offset is bounds checked once at construction time.
 The `/dev/gpiomem` map is loaded on demand.
 """
 struct Register
@@ -154,17 +154,17 @@ Base.setindex!(p::GPIOPin, v::Bool) = v ? set(p) : clear(p)
 Base.setindex!(p::GPIOPin, v) = setindex!(p, !iszero(v))
 Base.getindex(p::GPIOPin) = !iszero(level(p))
 
-  set(p::GPIOPin) = p.gpset[] = p.pin_bit                 # [1, Table 6-9,  p95]
-clear(p::GPIOPin) = p.gpclr[] = p.pin_bit                 # [1, Table 6-10, p95]
-level(p::GPIOPin) = p.gplev[] & p.pin_bit                 # [1, Table 6-12, p96]
+  set(p::GPIOPin) = (p.gpset[] = p.pin_bit; nothing)      # [1, Table 6-9,  p95]
+clear(p::GPIOPin) = (p.gpclr[] = p.pin_bit; nothing)      # [1, Table 6-10, p95]
+level(p::GPIOPin) =  p.gplev[] & p.pin_bit                # [1, Table 6-12, p96]
 
 
 # Input/Output mode.                                         [1, Table 6-2, p92]
 
 reset_mode(p::GPIOPin) = p.gpfsel[] &= ~(UInt32(0b111) << sel_index(p))
 
-set_input_mode(p::GPIOPin) = p.gpfsel[] &= ~p.sel_bit
-set_output_mode(p::GPIOPin) = p.gpfsel[] |= p.sel_bit
+set_input_mode(p::GPIOPin) = (p.gpfsel[] &= ~p.sel_bit; nothing)
+set_output_mode(p::GPIOPin) = (p.gpfsel[] |= p.sel_bit; nothing)
 is_input(p::GPIOPin) = iszero(p.gpfsel[] & p.sel_bit)
 is_output(p::GPIOPin) = !is_input(p::GPIOPin)
 
@@ -174,28 +174,40 @@ is_output(p::GPIOPin) = !is_input(p::GPIOPin)
 "Combine the `pin_bit`s for multiple `pins` into a single bit mask."
 bits(pins...) = reduce(|, p.pin_bit for p in pins)
 
-  set(pins::GPIOPin...) = first(pins).gpset[] = bits(pins)
-clear(pins::GPIOPin...) = first(pins).gpclr[] = bits(pins)
-level(pins::GPIOPin...) = first(pins).gplev[] & bits(pins)
+  set(pins::GPIOPin...) = (first(pins).gpset[] = bits(pins); nothing)
+clear(pins::GPIOPin...) = (first(pins).gpclr[] = bits(pins); nothing)
+level(pins::GPIOPin...) =  first(pins).gplev[] & bits(pins)
 
 
 # Pull-up/down.                                            [1, Table 6-28, p101]
 
-set_highz(p::GPIOPin) = set_pud(p, 0)
+set_highz(p::GPIOPin)    = set_pud(p, 0)
 set_pulldown(p::GPIOPin) = set_pud(p, 1)
-set_pullup(p::GPIOPin) = set_pud(p, 2)
+set_pullup(p::GPIOPin)   = set_pud(p, 2)
 
 using LLVM
-spin(n) = for i in 1:n LLVM.Interop.@asmcall("nop") end
+@noinline nop() = LLVM.Interop.@asmcall("nop")
+spin(n) = for i in 1:n nop() end                  # spin(50) ~= 1us on Pi Zero W
 
 function set_pud(p::GPIOPin, mode)
     gppud()[] = mode
-    spin(100)                                        # [1, p101] Wait 150 cycles
+    spin(10)                                         # [1, p101] Wait 150 cycles
     gppudclk0()[] = p.pin_bit
-    spin(100)                                        # [1, p101] Wait 150 cycles
+    spin(10)                                         # [1, p101] Wait 150 cycles
     gppud()[] = 0
-    gppudclk()[] = 0
+    gppudclk0()[] = 0
+    nothing
 end
+
+
+# Pretty printing.
+
+Base.show(io::IO, p::GPIOPin) =
+    print(io, "GPIOPin(", pin_index(p), is_output(p) ? ", output=true)" : ")")
+
+Base.show(io::IO, r::Register) =
+    print(io, "BCM2835 Register: 0x7E20_",
+              uppercase(string(r.address - pointer(gpiomem[]), base=16, pad=4)))
 
 
 
