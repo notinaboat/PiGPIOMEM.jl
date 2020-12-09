@@ -163,9 +163,9 @@ level(p::GPIOPin) =  p.gplev[] & p.pin_bit                # [1, Table 6-12, p96]
 
 reset_mode(p::GPIOPin) = p.gpfsel[] &= ~(UInt32(0b111) << sel_index(p))
 
-set_input_mode(p::GPIOPin) = (p.gpfsel[] &= ~p.sel_bit; nothing)
-set_output_mode(p::GPIOPin) = (p.gpfsel[] |= p.sel_bit; nothing)
-is_input(p::GPIOPin) = iszero(p.gpfsel[] & p.sel_bit)
+set_input_mode(p::GPIOPin)  = (p.gpfsel[] &= ~p.sel_bit; nothing)
+set_output_mode(p::GPIOPin) = (p.gpfsel[] |=  p.sel_bit; nothing)
+is_input(p::GPIOPin)  = iszero(p.gpfsel[]  &  p.sel_bit)
 is_output(p::GPIOPin) = !is_input(p::GPIOPin)
 
 
