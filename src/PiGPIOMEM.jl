@@ -106,9 +106,14 @@ struct Register
     function Register(offset)
         @assert 1 + offset in 1:gpiomem_length
         if !isassigned(gpiomem)
-            gpiomem[] = Mmap.mmap("/dev/gpiomem",
-                                  Vector{UInt32}, gpiomem_length;
-                                  grow=false)
+            if ispath("/dev/gpiomem")
+                gpiomem[] = Mmap.mmap("/dev/gpiomem",
+                                      Vector{UInt32}, gpiomem_length;
+                                      grow=false)
+            else
+                @warn "/dev/gpiomem not found! Using dummy gpiomem."
+                gpiomem[] = zeros(UInt32, gpiomem_length)
+            end
         end
         new(pointer(gpiomem[], 1 + offset))
     end
