@@ -82,6 +82,8 @@ export set, clear
 export set_input_mode, set_output_mode, is_input, is_output
 export set_highz, set_pullup, set_pulldown
 
+export GPIOPins
+
 using Mmap
 
 
@@ -209,6 +211,55 @@ bits(pins...) = reduce(|, p.pin_bit for p in pins)
   set(pins::GPIOPin...) = (first(pins).gpset[] = bits(pins); nothing)
 clear(pins::GPIOPin...) = (first(pins).gpclr[] = bits(pins); nothing)
 level(pins::GPIOPin...) =  first(pins).gplev[] & bits(pins)
+
+const EdgeVector = Vector{Pair{UInt8,Bool}}
+
+mutable struct GPIOPins
+    bits::UInt32
+    old_state::UInt32
+    edges::EdgeVector
+
+    function GPIOPins(pins...)
+        mask = bits(pins)
+        new(mask, gplev0()[] & mask, EdgeVector())
+    end
+end
+
+function Base.take!(pins)
+
+    while true
+
+        old_state = pins.old_state
+        new_state = gplev0()[] & pins.mask
+        Δ = old_state ⊻ new_state
+
+        if Δ != 0
+
+            rising  = Δ & new_state
+            falling = Δ & old_state
+            pins.old_state = new_state
+
+            while rising != 0
+                pin = trailing_zeros(rising)
+                rising &= (0xFFFFFFFF << (pin + 1))
+                push!(pins.edges, pin => true)
+            end
+
+            while falling != 0
+                pin = trailing_zeros(falling)
+                falling &= (0xFFFFFFFF << (pin + 1))
+                push!(pins.edges, pin => false)
+            end
+
+        end
+
+        if !isempty(pins.edges)
+            return popfirst!(pins.edges)
+        end
+
+        sleep(0.001)
+    end
+end
 
 
 # Pull-up/down.                                            [1, Table 6-28, p101]
