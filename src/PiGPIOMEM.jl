@@ -120,7 +120,7 @@ struct Register
 end
 
 Base.getindex(r::Register) = unsafe_load(r.address)
-Base.setindex!(r::Register, v) = unsafe_store!(r.address, v)
+Base.setindex!(r::Register, v::UInt32) = unsafe_store!(r.address, v)
 
 gpfsel(n)   = Register(n÷10)                        # 0x 7E20 0000 [1, 6.1, p90]
 gpset0()    = Register(0x1C÷4)                      # 0x 7E20 001C [1, 6.1, p90]
