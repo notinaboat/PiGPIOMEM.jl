@@ -1,7 +1,7 @@
 name = "PiGPIOMEM"
 uuid = "1cdbf0ad-f496-4de0-97e4-602941adc73e"
 authors = ["notinaboat <notinaboat@icloud.com>"]
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 LLVM = "929cbde3-209d-540e-8aea-75f648917ca0"
