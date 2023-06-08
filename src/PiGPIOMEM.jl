@@ -89,7 +89,12 @@ using Mmap
 
 "Memory map of the BCM2835 GPIO registers (`0x7E200000`)"
 const gpiomem = Ref{Vector{UInt32}}()
-const gpiomem_length = 40                                        # [1, 6.1, p91]
+const gpiomem_length_pi3 = 40                                    # [1, 6.1, p91]
+const gpiomem_length_pi4 = 60 # ?
+function gpiomem_length()
+    global is_pi4
+    is_pi4 ? gpiomem_length_pi4 : gpiomem_length_pi3
+end
 
 
 """
@@ -104,17 +109,19 @@ The `/dev/gpiomem` map is loaded on demand.
 struct Register
     address::Ptr{UInt32}
     function Register(offset)
-        @assert 1 + offset in 1:gpiomem_length
         if !isassigned(gpiomem)
             if ispath("/dev/gpiomem")
+                global is_pi4 = read("/sys/firmware/devicetree/base/model") |>
+                                String |> contains("Pi 4")
                 gpiomem[] = Mmap.mmap("/dev/gpiomem",
-                                      Vector{UInt32}, gpiomem_length;
+                                      Vector{UInt32}, gpiomem_length();
                                       grow=false)
             else
                 @warn "/dev/gpiomem not found! Using dummy gpiomem."
-                gpiomem[] = zeros(UInt32, gpiomem_length)
+                gpiomem[] = zeros(UInt32, gpiomem_length())
             end
         end
+        @assert 1 + offset in 1:gpiomem_length()
         new(pointer(gpiomem[], 1 + offset))
     end
 end
@@ -129,6 +136,10 @@ gpclr0()    = Register(0x28÷4)                      # 0x 7E20 0028 [1, 6.1, p90
 gplev0()    = Register(0x34÷4)                      # 0x 7E20 0034 [1, 6.1, p90]
 gppud()     = Register(0x94÷4)                      # 0x 7E20 0094 [1, 6.1, p91]
 gppudclk0() = Register(0x98÷4)                      # 0x 7E20 0098 [1, 6.1, p91]
+
+"Pi 4"
+gppuppdn0() = Register(0xe4÷4)
+gppuppdn1() = Register(0xe8÷4)
 
 
 """
@@ -222,13 +233,25 @@ using LLVM
 @noinline nop() = LLVM.Interop.@asmcall("nop")
 spin(n) = for i in 1:n nop() end                  # spin(50) ~= 1us on Pi Zero W
 
+
 function set_pud(p::GPIOPin, mode)
-    gppud()[] = mode
-    spin(10)                                         # [1, p101] Wait 150 cycles
-    gppudclk0()[] = p.pin_bit
-    spin(10)                                         # [1, p101] Wait 150 cycles
-    gppud()[] = 0
-    gppudclk0()[] = 0
+    global is_pi4
+    if is_pi4
+        mode = mode == 1 ? 2 :
+               mode == 2 ? 1 : mode
+        i = pin_index(p)
+        shift = (i & 0xf) << 1
+        reg = i <= 0xf ? gppuppdn0() :
+                         gppuppdn1()
+        reg[] = (reg[] & ~(3 << shift)) | (mode << shift)
+    else
+        gppud()[] = mode
+        spin(10)                                         # [1, p101] Wait 150 cycles
+        gppudclk0()[] = p.pin_bit
+        spin(10)                                         # [1, p101] Wait 150 cycles
+        gppud()[] = 0
+        gppudclk0()[] = 0
+    end
     nothing
 end
 
